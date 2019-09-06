@@ -1631,10 +1631,11 @@ func cdcSetup(setup usbSetup) bool {
 		if setup.bRequest == usb_CDC_SET_LINE_CODING || setup.bRequest == usb_CDC_SET_CONTROL_LINE_STATE {
 			// auto-reset into the bootloader
 			if usbLineInfo.dwDTERate == 1200 && (usbLineInfo.lineState&0x01) == 0 {
-				// TODO: system reset
+				ResetProcessor()
 			} else {
 				// TODO: cancel any reset
 			}
+			sendZlp(0)
 		}
 
 		if setup.bRequest == usb_CDC_SEND_BREAK {
@@ -2080,5 +2081,31 @@ func setEPINTENSET(ep uint32, val uint8) {
 		sam.USB_DEVICE.EPINTENSET7.Set(val)
 	default:
 		return
+	}
+}
+
+// ResetProcessor should perform a system reset in preperation
+// to switch to the bootloader to flash new firmware.
+func ResetProcessor() {
+	arm.DisableInterrupts()
+
+	for !sam.NVMCTRL.INTFLAG.HasBits(sam.NVMCTRL_INTFLAG_READY) {
+	}
+
+	//NVMCTRL->STATUS.reg |= NVMCTRL_STATUS_MASK;
+	sam.NVMCTRL.STATUS.SetBits(0x111)
+
+	//NVMCTRL->ADDR.reg  = (uintptr_t)&NVM_MEMORY[APP_START / 4];
+	sam.NVMCTRL.ADDR.Set(uint32(uintptr(0x00002004))) // is this correct?
+
+	//NVMCTRL->CTRLA.reg = NVMCTRL_CTRLA_CMD_ER | NVMCTRL_CTRLA_CMDEX_KEY;
+	sam.NVMCTRL.CTRLA.Set(sam.NVMCTRL_CTRLA_CMD_ER | sam.NVMCTRL_CTRLA_CMDEX_KEY)
+
+	for !sam.NVMCTRL.INTFLAG.HasBits(sam.NVMCTRL_INTFLAG_READY) {
+	}
+
+	arm.SystemReset()
+
+	for {
 	}
 }
